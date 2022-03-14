@@ -409,7 +409,18 @@ class Model:
     def downward(self, **kwds):
         return self.infer(Direction.DOWNWARD, **kwds)
 
-    def train(self, **kwds):
+    def train(
+        self,
+        losses,
+        optimizer=None,
+        parameters=None,
+        learning_rate=5e-2,
+        epochs=3e2,
+        pbar=False,
+        parameter_history=None,
+        stop_at_convergence=True,
+        **kwds,
+    ):
         r"""Train the model
 
         Reasons across the model until convergence using the standard inference
@@ -419,14 +430,13 @@ class Model:
         An epoch constitutes all computation until parameters take a step.
 
         **Parameters**
-            kwds
-                losses: list or dict
-                    predefined losses include
-                     ['contradiction', 'uncertainty', 'logical', 'supervised']
-                    If given in dict form, coefficients of each loss can be
-                    specified as a float value. The value can alternatively
-                    specify additional parameters for each loss calculation
-                    using a dict
+            losses: list or dict
+                predefined losses include
+                    ['contradiction', 'uncertainty', 'logical', 'supervised']
+                If given in dict form, coefficients of each loss can be
+                specified as a float value. The value can alternatively
+                specify additional parameters for each loss calculation
+                using a dict
 
         **Returns**
 
@@ -478,41 +488,57 @@ class Model:
         ```
 
         """
-        optimizer = kwds.get(
-            "optimizer",
-            torch.optim.Adam(
-                kwds.get("parameters", self.parameters()),
-                lr=kwds.get("learning_rate", 5e-2),
-            ),
-        )
+        if parameters is None:
+            parameters = self.parameters()
+
+        if optimizer is None:
+            optimizer = torch.optim.Adam(
+                parameters,
+                lr=learning_rate,
+            )
+
         running_loss, loss_history, inference_history = [], [], []
+
         for epoch in tqdm(
-            range(int(kwds.get("epochs", 3e2))),
+            range(int(epochs)),
             desc="training epoch",
-            disable=not kwds.get("pbar", False),
+            disable=not pbar,
         ):
             optimizer.zero_grad()
+
             if epoch > 0:
                 self.reset_bounds()
-            self.increment_param_history(kwds.get("parameter_history"))
+
+            self.increment_param_history(parameter_history)
+
             _, facts_inferred = self.infer(**kwds)
-            loss_fn = self.loss_fn(kwds.get("losses"))
+
+            loss_fn = self.loss_fn(losses)
             loss = sum(loss_fn)
+
             if not loss.grad_fn:
                 raise RuntimeError(
                     "graph loss found no gradient... "
                     "check learning flags, loss functions, labels "
                     "or switch to reasoning without learning"
                 )
+
             loss.backward()
+
             optimizer.step()
+
             self._project_params()
+
             running_loss.append(loss.item())
+
             loss_history.append([L.clone().detach().tolist() for L in loss_fn])
             inference_history.append(facts_inferred.item())
-            if loss <= 1e-5 and kwds.get("stop_at_convergence", True):
+
+            if loss <= 1e-5 and stop_at_convergence:
                 break
-        self.increment_param_history(kwds.get("parameter_history"))
+
+        self.increment_param_history(parameter_history)
+
         return (running_loss, loss_history), inference_history
 
     def parameters(self):
