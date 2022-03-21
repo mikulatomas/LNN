@@ -7,7 +7,7 @@
 import random
 import warnings
 from itertools import chain
-from typing import Union, Dict, Tuple
+from typing import Union, Dict, List, Tuple, Union, Optional, Iterable
 
 import torch
 import networkx as nx
@@ -411,14 +411,14 @@ class Model:
 
     def train(
         self,
-        losses,
-        optimizer=None,
-        parameters=None,
-        learning_rate=5e-2,
-        epochs=3e2,
-        pbar=False,
-        parameter_history=None,
-        stop_at_convergence=True,
+        losses: Union[List, Dict],
+        learning_rate: float = 5e-2,
+        epochs: int = 300,
+        optimizer: Optional[torch.optim.Optimizer] = None,
+        parameters: Optional[Iterable] = None,
+        parameter_history: Optional[Dict] = None,
+        stop_at_convergence: bool = True,
+        pbar: bool = False,
         **kwds,
     ):
         r"""Train the model
